@@ -14,71 +14,27 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <errno.h>
+
+#include <random>
+#include <ctime>
 
 #include "bcrypt.h"
 #include "crypt_blowfish/ow-crypt.h"
 
 #define RANDBYTES (16)
 
-static int try_close(int fd)
-{
-	int ret;
-	for (;;) {
-		errno = 0;
-		ret = close(fd);
-		if (ret == -1 && errno == EINTR)
-			continue;
-		break;
-	}
-	return ret;
-}
-
-static int try_read(int fd, char *out, size_t count)
-{
-	size_t total;
-	ssize_t partial;
-
-	total = 0;
-	while (total < count)
-	{
-		for (;;) {
-			errno = 0;
-			partial = read(fd, out + total, count - total);
-			if (partial == -1 && errno == EINTR)
-				continue;
-			break;
-		}
-
-		if (partial < 1)
-			return -1;
-
-		total += partial;
-	}
-
-	return 0;
-}
-
 int bcrypt_gensalt(int factor, char salt[BCRYPT_HASHSIZE])
 {
-	int fd;
 	char input[RANDBYTES];
 	int workf;
 	char *aux;
 
-	fd = open("/dev/urandom", O_RDONLY);
-	if (fd == -1)
-		return 1;
+	std::default_random_engine engine((unsigned int)std::time(nullptr));
 
-	if (try_read(fd, input, RANDBYTES) != 0) {
-		if (try_close(fd) != 0)
-			return 4;
-		return 2;
-	}
-
-	if (try_close(fd) != 0)
-		return 3;
+	typedef std::default_random_engine::result_type result_type;
+	for (int i = 0; i < RANDBYTES / sizeof result_type; ++i)
+		reinterpret_cast<result_type*>(input)[i] = engine();
 
 	/* Generate salt. */
 	workf = (factor < 4 || factor > 31)?12:factor;
